@@ -996,6 +996,9 @@ class Game:
                 self.turn = "white"
 
 class DPGChessGame(Game):
+    BOARD_SQUARE_SIZE = 62
+    SIDE_PANEL_WIDTH = 520
+    LOG_HEIGHT = 440
     LIGHT_BG = (218, 74, 196, 255)
     DARK_BG = (136, 51, 132, 255)
     LAST_BG = (0, 188, 212, 255)
@@ -1036,6 +1039,7 @@ class DPGChessGame(Game):
         self.log_tag = "chessvultra_dpg_log"
         self.piece_font_tag = "chessvultra_piece_font"
         self.piece_font_loaded = False
+        self.undo_stack = []
 
     def _square_tag(self, row, col):
         return f"chessvultra_square_{row}_{col}"
@@ -1106,12 +1110,33 @@ class DPGChessGame(Game):
     def _log(self, message):
         self.log_lines.append(message)
         self.log_lines = self.log_lines[-80:]
+        self._sync_log()
+
+    def _sync_log(self):
         if dpg.does_item_exist(self.log_tag):
             dpg.set_value(self.log_tag, "\n".join(self.log_lines))
 
     def _reset_selection(self):
         self.selected_square = None
         self.legal_targets = set()
+
+    def _snapshot_state(self):
+        return {
+            "board": self.board.clone(),
+            "turn": self.turn,
+            "last_move": self.last_move,
+            "game_over": self.game_over,
+            "log_lines": list(self.log_lines),
+        }
+
+    def _restore_state(self, state):
+        self.board = state["board"].clone()
+        self.turn = state["turn"]
+        self.last_move = state["last_move"]
+        self.game_over = state["game_over"]
+        self.log_lines = list(state["log_lines"])
+        self._reset_selection()
+        self._sync_log()
 
     def _piece_fg_name(self, piece):
         if piece is None:
@@ -1275,12 +1300,30 @@ class DPGChessGame(Game):
             self._set_status("Illegal move.")
             return
 
+        undo_state = self._snapshot_state()
         if self._make_gui_move(from_pos, pos):
+            self.undo_stack.append(undo_state)
             self.turn = "black"
             self._reset_selection()
             self.refresh_board()
             if not self._update_status_for_turn():
                 self._make_ai_reply()
+
+    def undo_white_move(self, sender=None, app_data=None, user_data=None):
+        if not self.undo_stack:
+            self._set_status("No white move to undo.")
+            return
+
+        self._restore_state(self.undo_stack.pop())
+        self._update_status_for_turn()
+        if self.turn == "white":
+            if self.board.is_in_check("white"):
+                self._set_status("Undid White's last move. White is in check.")
+            else:
+                self._set_status("Undid White's last move. White to move.")
+        else:
+            self._set_status("Undid White's last move.")
+        self.refresh_board()
 
     def new_game(self, sender=None, app_data=None, user_data=None):
         self.board = ChessBoard()
@@ -1288,6 +1331,7 @@ class DPGChessGame(Game):
         self.last_move = None
         self.game_over = False
         self._reset_selection()
+        self.undo_stack = []
         self.log_lines = []
         self._log("Welcome - you are White. AI is Black.")
         self._log("Click a source square, then a target square.")
@@ -1310,22 +1354,29 @@ class DPGChessGame(Game):
                                 dpg.add_button(
                                     label=" ",
                                     tag=self._square_tag(row, col),
-                                    width=62,
-                                    height=62,
+                                    width=self.BOARD_SQUARE_SIZE,
+                                    height=self.BOARD_SQUARE_SIZE,
                                     callback=self.on_square_click,
                                     user_data=(row, col),
                                 )
                                 if self.piece_font_loaded:
                                     dpg.bind_item_font(self._square_tag(row, col), self.piece_font_tag)
                 with dpg.group():
-                    dpg.add_button(label="New Game", width=220, callback=self.new_game)
-                    dpg.add_button(label="Quit", width=220, callback=lambda: dpg.stop_dearpygui())
+                    dpg.add_button(label="New Game", width=self.SIDE_PANEL_WIDTH, callback=self.new_game)
+                    dpg.add_button(label="Undo White Move", width=self.SIDE_PANEL_WIDTH, callback=self.undo_white_move)
+                    dpg.add_button(label="Quit", width=self.SIDE_PANEL_WIDTH, callback=lambda: dpg.stop_dearpygui())
                     dpg.add_spacer(height=8)
                     dpg.add_text("Move log")
-                    dpg.add_input_text(tag=self.log_tag, multiline=True, readonly=True, width=220, height=440)
+                    dpg.add_input_text(
+                        tag=self.log_tag,
+                        multiline=True,
+                        readonly=True,
+                        width=self.SIDE_PANEL_WIDTH,
+                        height=self.LOG_HEIGHT,
+                    )
 
         self.new_game()
-        dpg.create_viewport(title="ChessvUltra:DearPyGui:@Littlegreymen", width=760, height=590)
+        dpg.create_viewport(title="ChessvUltra:DearPyGui:@Littlegreymen", width=1070, height=590)
         dpg.setup_dearpygui()
         dpg.set_primary_window(self.window_tag, True)
         dpg.show_viewport()
