@@ -8,3 +8,5 @@ We now have a faster AI response with timing of each black move.
 
 We now have the ability for two human to play each other over the airwaves !
 A black session starts first and listens for a white session to start then they pair and the game commence!
+
+A new version for the black AI to use a NN model.
