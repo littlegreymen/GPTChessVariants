@@ -1,4 +1,4 @@
-Chess is a game that I started learning at primary school and now I have made a version I cannot beat easily, can you?
+Chess is a game that I started learning at primary school and now I (with a lot of GPT help) have made a version I cannot beat easily, can you?
 
 Three terminal chess games "super" should be harder to beat than "basic". The new "ultra" version should be an improvment on "super" analysed by codex.
 
